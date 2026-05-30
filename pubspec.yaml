@@ -101,18 +101,20 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^2.0.0
-  flutter_to_arch:
-    git: https://github.com/wgh136/flutter_to_arch
+  # flutter_to_arch is only needed for building Arch Linux packages.
+  # Uncomment when running `dart run flutter_to_arch`.
+  # flutter_to_arch:
+  #   git: https://github.com/wgh136/flutter_to_arch
 
-flutter_to_arch:
-  name: Pica Comic
-  icon: debian/gui/pica-comic.png
-  categories: Utility
-  keywords: Flutter;comic;images;
-  url: https://github.com/Pacalini/PicaComic
-  depends:
-    - gtk3
-    - webkit2gtk-4.1
+# flutter_to_arch:
+#   name: Pica Comic
+#   icon: debian/gui/pica-comic.png
+#   categories: Utility
+#   keywords: Flutter;comic;images;
+#   url: https://github.com/Pacalini/PicaComic
+#   depends:
+#     - gtk3
+#     - webkit2gtk-4.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
