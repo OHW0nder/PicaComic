@@ -305,6 +305,32 @@ class ComicReadingPageLogic extends StateController {
       return;
     }
     int sec = int.parse(appdata.settings[33]);
+    if (readingMethod == ReadingMethod.topToBottomContinuously) {
+      // 连续模式：先等待观看，再平滑滚动到下一屏
+      for (int i = 0; i < sec * 10; i++) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (!runningAutoPageTurning) {
+          return;
+        }
+      }
+      double viewportHeight = scrollController.position.viewportDimension;
+      double target = (scrollController.position.pixels + viewportHeight)
+          .clamp(scrollController.position.minScrollExtent,
+              scrollController.position.maxScrollExtent);
+      try {
+        await scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.linear,
+        );
+      } catch (_) {
+        // 动画被用户操作中断
+      }
+      if (runningAutoPageTurning) {
+        autoPageTurning();
+      }
+      return;
+    }
     for (int i = 0; i < sec * 10; i++) {
       await Future.delayed(const Duration(milliseconds: 100));
       if (!runningAutoPageTurning) {
