@@ -34,9 +34,9 @@ android {
     splits{
         abi {
             reset()
-            include 'arm64-v8a', 'x86_64'
+            include 'arm64-v8a'
             enable true
-            universalApk true
+            universalApk false
         }
     }
 

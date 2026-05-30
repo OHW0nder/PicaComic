@@ -179,6 +179,13 @@ extension ToolBar on ComicReadingPage {
                         onPressed: () {
                           logic.runningAutoPageTurning =
                               !logic.runningAutoPageTurning;
+                          if (!logic.runningAutoPageTurning &&
+                              logic.readingMethod ==
+                                  ReadingMethod.topToBottomContinuously) {
+                            // 中断正在进行的持续上滑动画
+                            logic.scrollController.jumpTo(
+                                logic.scrollController.position.pixels);
+                          }
                           logic.update();
                           logic.autoPageTurning();
                         },

@@ -299,27 +299,57 @@ class ComicReadingPageLogic extends StateController {
 
   /// 自动翻页
   void autoPageTurning() async {
-    if (index == urls.length - 1) {
+    if (!runningAutoPageTurning) {
+      return;
+    }
+    if (readingMethod != ReadingMethod.topToBottomContinuously &&
+        index >= urls.length - 1) {
       runningAutoPageTurning = false;
       update();
       return;
     }
     int sec = int.parse(appdata.settings[33]);
     if (readingMethod == ReadingMethod.topToBottomContinuously) {
-      // 连续模式：先等待观看，再平滑滚动到下一屏
+      // 连续模式：持续匀速上滑到本话结束
+      double viewportHeight = scrollController.position.viewportDimension;
+      double maxScroll = scrollController.position.maxScrollExtent;
+      double currentPos = scrollController.position.pixels;
+      if (currentPos >= maxScroll) {
+        runningAutoPageTurning = false;
+        update();
+        return;
+      }
+      double remaining = maxScroll - currentPos;
+      double totalSec = (remaining / viewportHeight) * sec;
+      try {
+        await scrollController.animateTo(
+          maxScroll,
+          duration: Duration(milliseconds: (totalSec * 1000).round()),
+          curve: Curves.linear,
+        );
+      } catch (_) {
+        // 动画被用户操作中断
+      }
+      runningAutoPageTurning = false;
+      update();
+      return;
+    }
+    if (readingMethod == ReadingMethod.topToBottom) {
+      // 非连续模式：先等待观看，再平滑翻到下一页
       for (int i = 0; i < sec * 10; i++) {
         await Future.delayed(const Duration(milliseconds: 100));
         if (!runningAutoPageTurning) {
           return;
         }
       }
-      double viewportHeight = scrollController.position.viewportDimension;
-      double target = (scrollController.position.pixels + viewportHeight)
-          .clamp(scrollController.position.minScrollExtent,
-              scrollController.position.maxScrollExtent);
+      if (index >= urls.length - 1) {
+        runningAutoPageTurning = false;
+        update();
+        return;
+      }
       try {
-        await scrollController.animateTo(
-          target,
+        await pageController.animateToPage(
+          index + 1,
           duration: const Duration(milliseconds: 500),
           curve: Curves.linear,
         );
