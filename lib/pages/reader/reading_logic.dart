@@ -297,6 +297,9 @@ class ComicReadingPageLogic extends StateController {
   /// 是否处于自动翻页状态
   bool runningAutoPageTurning = false;
 
+  /// 用户上次滑动时间戳，用于自动翻页暂停/恢复
+  int _lastUserInteractMs = 0;
+
   /// 自动翻页
   void autoPageTurning() async {
     if (!runningAutoPageTurning) {
@@ -310,25 +313,36 @@ class ComicReadingPageLogic extends StateController {
     }
     int sec = int.parse(appdata.settings[33]);
     if (readingMethod == ReadingMethod.topToBottomContinuously) {
-      // 连续模式：持续匀速上滑到本话结束
+      // 连续模式：分段匀速上滑，用户滑动时暂停，松手后继续
       double viewportHeight = scrollController.position.viewportDimension;
+      double pixelsPerMs = viewportHeight / (sec * 1000);
       double maxScroll = scrollController.position.maxScrollExtent;
-      double currentPos = scrollController.position.pixels;
-      if (currentPos >= maxScroll) {
-        runningAutoPageTurning = false;
-        update();
-        return;
-      }
-      double remaining = maxScroll - currentPos;
-      double totalSec = (remaining / viewportHeight) * sec;
-      try {
-        await scrollController.animateTo(
-          maxScroll,
-          duration: Duration(milliseconds: (totalSec * 1000).round()),
-          curve: Curves.linear,
-        );
-      } catch (_) {
-        // 动画被用户操作中断
+
+      while (runningAutoPageTurning) {
+        double currentPos = scrollController.position.pixels;
+        if (currentPos >= maxScroll - 1) {
+          break;
+        }
+        // 用户最近滑动过？暂停等待
+        if (DateTime.now().millisecondsSinceEpoch - _lastUserInteractMs <
+            500) {
+          await Future.delayed(const Duration(milliseconds: 50));
+          continue;
+        }
+
+        double segmentPixels = pixelsPerMs * 300;
+        double target =
+            (currentPos + segmentPixels).clamp(currentPos, maxScroll);
+        try {
+          await scrollController.animateTo(
+            target,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.linear,
+          );
+        } catch (_) {
+          // 用户滑动中断了动画，记录时间以便暂停后恢复
+          _lastUserInteractMs = DateTime.now().millisecondsSinceEpoch;
+        }
       }
       runningAutoPageTurning = false;
       update();
