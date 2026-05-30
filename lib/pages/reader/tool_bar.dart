@@ -179,10 +179,16 @@ extension ToolBar on ComicReadingPage {
                         onPressed: () {
                           logic.runningAutoPageTurning =
                               !logic.runningAutoPageTurning;
-                          if (!logic.runningAutoPageTurning &&
-                              logic.readingMethod ==
-                                  ReadingMethod.topToBottomContinuously) {
-                            // 中断正在进行的持续上滑动画
+                          if (logic.runningAutoPageTurning) {
+                            // 启动自动翻页：隐藏工具栏和系统栏
+                            if (logic.tools) {
+                              logic.tools = false;
+                              SystemChrome.setEnabledSystemUIMode(
+                                  SystemUiMode.immersive);
+                            }
+                          } else if (logic.readingMethod ==
+                              ReadingMethod.topToBottomContinuously) {
+                            // 停止连续模式：中断正在进行的上滑动画
                             logic.scrollController.jumpTo(
                                 logic.scrollController.position.pixels);
                           }
