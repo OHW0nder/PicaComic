@@ -10,7 +10,8 @@ enum ComicType {
   htManga,
   htFavorite,
   nhentai,
-  other;
+  other,
+  local;
 
   @override
   toString() => name;

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'category_page.dart';
 import 'explore_page.dart';
 import 'favorites/main_favorites_page.dart';
+import 'local_comic/local_comic_page.dart';
 import 'pre_search_page.dart';
 import 'settings/settings_page.dart';
 import 'package:url_launcher/url_launcher_string.dart';
@@ -87,6 +88,7 @@ class MainPageState extends State<MainPage> {
           key: Key(appdata.appSettings.explorePages.length.toString()),
         ),
         const AllCategoryPage(),
+        const LocalComicPage(),
       ];
 
   void _login() {
@@ -229,6 +231,10 @@ class MainPageState extends State<MainPage> {
             label: '分类'.tl,
             icon: Icons.account_tree_outlined,
             activeIcon: Icons.account_tree),
+        PaneItemEntry(
+            label: '本地漫画'.tl,
+            icon: Icons.download_outlined,
+            activeIcon: Icons.download),
       ],
       paneActions: [
         PaneActionEntry(

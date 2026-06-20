@@ -43,6 +43,9 @@ import 'package:pica_comic/network/picacg_network/methods.dart';
 import 'package:pica_comic/tools/translations.dart';
 
 import '../jm/jm_comments_page.dart';
+import 'package:pica_comic/foundation/local_comics.dart';
+import 'package:pica_comic/tools/zip_reader.dart';
+import 'package:pica_comic/foundation/image_loader/zip_image_provider.dart';
 
 part 'eps_view.dart';
 
@@ -62,6 +65,8 @@ part 'reading_settings.dart';
 
 part 'reading_data.dart';
 
+part 'local_reading_data.dart';
+
 ///阅读器
 class ComicReadingPage extends StatelessWidget {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -78,6 +83,19 @@ class ComicReadingPage extends StatelessWidget {
 
   ComicReadingPage(this.readingData, this.initialPage, this.initialEp,
       {super.key}) {
+    StateController.put(ComicReadingPageLogic(
+        initialEp,
+        readingData,
+        initialPage,
+        () => _updateHistory(
+            StateController.find<ComicReadingPageLogic>(), false)));
+  }
+
+  ComicReadingPage.local(LocalComic comic, int initialPageLocal,
+      {super.key})
+      : initialEp = 1,
+        initialPage = initialPageLocal,
+        readingData = LocalReadingData(comic) {
     StateController.put(ComicReadingPageLogic(
         initialEp,
         readingData,
