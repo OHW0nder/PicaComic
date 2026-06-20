@@ -113,8 +113,21 @@ class TapController {
 
   static int fingers = 0;
 
+  /// 触摸开始时间，用于区分 tap/drag
+  static DateTime? _touchDownTime;
+  static Offset? _touchDownPos;
+  static bool _touchMoved = false;
+
   static void onTapCancel(PointerCancelEvent event){
     fingers--;
+    // 自动翻页运行时拖拽被认领 → 通知 autoPageTurning 等待滚动结束
+    if (_touchMoved) {
+      var logic = StateController.find<ComicReadingPageLogic>();
+      if (logic.runningAutoPageTurning &&
+          logic.readingMethod == ReadingMethod.topToBottomContinuously) {
+        logic._userWasDragging = true;
+      }
+    }
   }
 
   static void onTapDown(PointerDownEvent event) {
@@ -128,6 +141,11 @@ class TapController {
       return;
     }
     var logic = StateController.find<ComicReadingPageLogic>();
+
+    // 记录触摸信息，用于区分 tap/drag
+    _touchDownTime = DateTime.now();
+    _touchDownPos = event.position;
+    _touchMoved = false;
 
     if(appdata.settings[55] == "1") {
       _tapDownPointer = _TapDownPointer(event.pointer);
@@ -170,7 +188,10 @@ class TapController {
     if (!logic.scrollController.hasClients) {
       _tapOffset = event.position;
     } else if (logic.scrollController.hasClients &&
-        (DateTime.now() - lastScrollTime).inMilliseconds > 50) {
+        ((DateTime.now() - lastScrollTime).inMilliseconds > 50 ||
+            (logic.runningAutoPageTurning &&
+                logic.readingMethod ==
+                    ReadingMethod.topToBottomContinuously))) {
       _tapOffset = event.position;
     }
   }
@@ -228,7 +249,26 @@ class TapController {
         return;
       }
       _tapOffset = null;
-    } else {
+    } else if (!logic.runningAutoPageTurning ||
+        logic.readingMethod != ReadingMethod.topToBottomContinuously) {
+      return;
+    }
+
+    // 自动翻页运行时：根据 tap/drag 决定行为
+    if (logic.runningAutoPageTurning &&
+        logic.readingMethod == ReadingMethod.topToBottomContinuously) {
+      var duration = DateTime.now().difference(_touchDownTime ?? DateTime.now());
+      if (!_touchMoved && duration.inMilliseconds < 300) {
+        // 点击（无移动，时间短）：切换工具栏，退出沉浸模式
+        logic.tools = !logic.tools;
+        if (logic.tools) {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        } else {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+        }
+        logic.update(["ToolBar"]);
+      }
+      // 滑动：不切换工具栏，autoPageTurning 循环等待滚动结束
       return;
     }
 
@@ -258,6 +298,11 @@ class TapController {
 
   static void onPointerMove(PointerMoveEvent event){
     final logic = StateController.find<ComicReadingPageLogic>();
+    // 追踪手指是否移动（用于区分 tap/drag）
+    if (_touchDownPos != null &&
+        (event.position - _touchDownPos!).distance > 10) {
+      _touchMoved = true;
+    }
     if(event.pointer == _tapDownPointer?.id){
       _tapDownPointer!.offset += event.delta;
       if(_tapDownPointer!.getDistance() > 1){

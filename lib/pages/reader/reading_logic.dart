@@ -297,8 +297,8 @@ class ComicReadingPageLogic extends StateController {
   /// 是否处于自动翻页状态
   bool runningAutoPageTurning = false;
 
-  /// 用户上次滑动时间戳，用于自动翻页暂停/恢复
-  int _lastUserInteractMs = 0;
+  /// 用户刚刚拖拽结束，autoPageTurning 应等待弹跳结束再恢复
+  bool _userWasDragging = false;
 
   /// 自动翻页
   void autoPageTurning() async {
@@ -313,35 +313,41 @@ class ComicReadingPageLogic extends StateController {
     }
     int sec = int.parse(appdata.settings[33]);
     if (readingMethod == ReadingMethod.topToBottomContinuously) {
-      // 连续模式：分段匀速上滑，用户滑动时暂停，松手后继续
+      // 连续模式：单次平滑上滑到本话结束，拖拽时暂停，松手后继续
       double viewportHeight = scrollController.position.viewportDimension;
-      double pixelsPerMs = viewportHeight / (sec * 1000);
       double maxScroll = scrollController.position.maxScrollExtent;
 
       while (runningAutoPageTurning) {
-        double currentPos = scrollController.position.pixels;
-        if (currentPos >= maxScroll - 1) {
-          break;
-        }
-        // 用户最近滑动过？暂停等待
-        if (DateTime.now().millisecondsSinceEpoch - _lastUserInteractMs <
-            500) {
+        // 用户刚拖拽完？等待弹跳完全结束
+        if (_userWasDragging) {
+          if (!scrollController.position.isScrollingNotifier.value) {
+            _userWasDragging = false;
+          }
           await Future.delayed(const Duration(milliseconds: 50));
           continue;
         }
-
-        double segmentPixels = pixelsPerMs * 300;
-        double target =
-            (currentPos + segmentPixels).clamp(currentPos, maxScroll);
+        double remaining = maxScroll - scrollController.position.pixels;
+        if (remaining <= 1) {
+          break;
+        }
+        double totalSec = (remaining / viewportHeight) * sec;
         try {
           await scrollController.animateTo(
-            target,
-            duration: const Duration(milliseconds: 300),
+            maxScroll,
+            duration:
+                Duration(milliseconds: (totalSec * 1000).round()),
             curve: Curves.linear,
           );
+          // animateTo 正常返回，但需要确认是否真的到了终点
+          // （被手势中断时也会正常返回，但位置没到终点）
+          if (scrollController.position.pixels < maxScroll - 1) {
+            await Future.delayed(const Duration(milliseconds: 50));
+            continue;
+          }
+          break; // 真正到了终点
         } catch (_) {
-          // 用户滑动中断了动画，记录时间以便暂停后恢复
-          _lastUserInteractMs = DateTime.now().millisecondsSinceEpoch;
+          // 被中断（点击或拖拽），短暂等待后循环重新开始
+          await Future.delayed(const Duration(milliseconds: 50));
         }
       }
       runningAutoPageTurning = false;

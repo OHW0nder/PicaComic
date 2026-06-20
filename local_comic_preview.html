@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pica Comic - 本地漫画界面演示</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif; background: #e8e8e8; display: flex; justify-content: center; align-items: center; min-height: 100vh; gap: 24px; flex-wrap: wrap; padding: 20px; }
+
+  .phone { width: 390px; height: 844px; background: #111; border-radius: 44px; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,0.3); display: flex; flex-direction: column; position: relative; flex-shrink: 0; }
+  .phone-notch { height: 47px; background: #000; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; flex-shrink: 0; }
+  .phone-notch .time { color: #fff; font-size: 14px; font-weight: 600; }
+  .phone-notch .icons { color: #fff; font-size: 12px; display: flex; gap: 6px; }
+
+  .app { flex: 1; display: flex; flex-direction: column; background: #131313; position: relative; overflow: hidden; }
+  .app.light { background: #f5f5f5; }
+
+  /* AppBar */
+  .appbar { display: flex; align-items: center; padding: 8px 4px 0; flex-shrink: 0; background: inherit; }
+  .appbar .nav-icon { font-size: 24px; color: #e0e0e0; padding: 8px 16px; cursor: pointer; }
+  .app.light .appbar .nav-icon { color: #333; }
+  .appbar .title-area { flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 4px; }
+  .appbar .title-area .icon { color: #e0e0e0; font-size: 22px; }
+  .app.light .appbar .title-area .icon { color: #333; }
+  .appbar .title-area .title-text { color: #e0e0e0; font-size: 20px; font-weight: 500; }
+  .app.light .appbar .title-area .title-text { color: #222; }
+  .appbar .actions { display: flex; gap: 0; }
+  .appbar .actions button { background: none; border: none; color: #e0e0e0; width: 44px; height: 44px; border-radius: 8px; cursor: pointer; font-size: 22px; display: flex; align-items: center; justify-content: center; }
+  .app.light .appbar .actions button { color: #333; }
+  .appbar .actions button:hover { background: rgba(255,255,255,0.08); }
+  .app.light .appbar .actions button:hover { background: rgba(0,0,0,0.05); }
+  .appbar .actions .import-btn { font-size: 15px; width: auto; padding: 0 14px; color: #e94560; font-weight: 500; }
+
+  /* Content */
+  .content { flex: 1; overflow-y: auto; position: relative; }
+  .content::-webkit-scrollbar { width: 0; }
+
+  /* Empty state */
+  .empty-state { display: flex; flex-direction: column; align-items: center; padding-top: 120px; text-align: center; }
+  .empty-state .icon-wrap { width: 88px; height: 88px; border-radius: 22px; background: rgba(233,69,96,0.1); display: flex; align-items: center; justify-content: center; margin-bottom: 24px; }
+  .empty-state .icon-wrap span { font-size: 42px; }
+  .empty-state h3 { font-size: 18px; font-weight: 500; color: #e0e0e0; margin-bottom: 10px; }
+  .app.light .empty-state h3 { color: #333; }
+  .empty-state p { font-size: 14px; color: #6a7a8a; line-height: 1.6; max-width: 240px; }
+  .app.light .empty-state p { color: #999; }
+  .empty-state p .highlight { color: #e94560; }
+
+  /* Comic grid */
+  .comic-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; padding: 8px 8px 80px; }
+  .comic-grid.three { grid-template-columns: repeat(3, 1fr); }
+  .comic-card { display: flex; flex-direction: column; padding: 4px; cursor: pointer; border-radius: 8px; transition: 0.15s; }
+  .comic-card:hover { background: rgba(255,255,255,0.04); transform: translateY(-1px); }
+  .app.light .comic-card:hover { background: rgba(0,0,0,0.03); }
+  .comic-card .cover-wrap { position: relative; width: 100%; padding-top: 140%; overflow: hidden; border-radius: 8px; }
+  .comic-card .cover-wrap .cover-img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+  .comic-card .cover-wrap .format-badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 500; }
+  .comic-card .cover-wrap .page-badge { position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.6); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+  .comic-card .info { padding: 8px 4px 4px; }
+  .comic-card .info .title { font-size: 13px; color: #e0e0e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .app.light .comic-card .info .title { color: #333; }
+  .comic-card .info .meta { font-size: 11px; color: #6a7a8a; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app.light .comic-card .info .meta { color: #999; }
+
+  /* FAB */
+  .fab { position: absolute; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: #e94560; border: none; color: #fff; font-size: 28px; cursor: pointer; box-shadow: 0 4px 16px rgba(233,69,96,0.4); display: flex; align-items: center; justify-content: center; z-index: 15; transition: 0.2s; }
+  .fab:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(233,69,96,0.5); }
+  .fab:active { transform: scale(0.95); }
+
+  /* Bottom nav */
+  .bottom-nav { height: 50px; background: inherit; border-top: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-around; flex-shrink: 0; padding-bottom: 20px; }
+  .app.light .bottom-nav { border-color: #e0e0e0; }
+  .bottom-nav .item { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0; cursor: pointer; min-width: 56px; color: #666; }
+  .bottom-nav .item.active { color: #e94560; }
+  .bottom-nav .item .nav-icon { font-size: 22px; line-height: 1; }
+  .bottom-nav .item .nav-label { font-size: 10px; }
+
+  /* File picker dialog */
+  .dialog-overlay { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.55); z-index: 50; align-items: center; justify-content: center; padding: 24px; }
+  .dialog-overlay.show { display: flex; }
+  .dialog { width: 100%; max-width: 340px; background: #1e1e1e; border-radius: 16px; padding: 20px; }
+  .app.light .dialog { background: #fff; }
+  .dialog h3 { font-size: 17px; font-weight: 500; color: #e0e0e0; margin-bottom: 8px; }
+  .app.light .dialog h3 { color: #222; }
+  .dialog .desc { font-size: 13px; color: #6a7a8a; margin-bottom: 16px; line-height: 1.5; }
+  .app.light .dialog .desc { color: #666; }
+  .dialog .file-list { max-height: 220px; overflow-y: auto; border: 1px solid #2a2a2a; border-radius: 8px; margin-bottom: 16px; }
+  .app.light .dialog .file-list { border-color: #e0e0e0; }
+  .dialog .file-list::-webkit-scrollbar { width: 4px; }
+  .dialog .file-list::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+  .dialog .file-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #2a2a2a; font-size: 13px; color: #e0e0e0; }
+  .app.light .dialog .file-item { border-color: #f0f0f0; color: #333; }
+  .dialog .file-item:last-child { border: none; }
+  .dialog .file-item:hover { background: rgba(233,69,96,0.08); }
+  .dialog .file-item.selected { background: rgba(233,69,96,0.15); }
+  .dialog .file-item .file-icon { font-size: 22px; }
+  .dialog .file-item .file-info { flex: 1; min-width: 0; }
+  .dialog .file-item .file-info .file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dialog .file-item .file-info .file-meta { font-size: 11px; color: #6a7a8a; margin-top: 1px; }
+  .dialog .file-item .check { color: #e94560; font-size: 18px; opacity: 0; }
+  .dialog .file-item.selected .check { opacity: 1; }
+  .dialog .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .dialog .actions button { padding: 8px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 500; }
+  .dialog .actions .cancel { background: transparent; color: #6a7a8a; }
+  .app.light .dialog .actions .cancel { color: #666; }
+  .dialog .actions .confirm { background: #e94560; color: #fff; }
+  .dialog .actions .confirm:disabled { background: #444; color: #888; cursor: not-allowed; }
+
+  /* Import progress toast */
+  .progress-toast { display: none; position: absolute; bottom: 86px; left: 16px; right: 16px; background: #1e1e1e; border-radius: 12px; padding: 14px 16px; z-index: 30; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+  .app.light .progress-toast { background: #fff; }
+  .progress-toast.show { display: block; }
+  .progress-toast .toast-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .progress-toast .toast-header .toast-icon { font-size: 16px; }
+  .progress-toast .toast-header .toast-title { font-size: 13px; color: #e0e0e0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app.light .progress-toast .toast-header .toast-title { color: #333; }
+  .progress-toast .toast-header .toast-pct { font-size: 12px; color: #6a7a8a; }
+  .progress-toast .toast-track { height: 4px; background: #2a2a2a; border-radius: 2px; overflow: hidden; }
+  .app.light .progress-toast .toast-track { background: #e0e0e0; }
+  .progress-toast .toast-fill { height: 100%; background: #e94560; border-radius: 2px; transition: width 0.2s; }
+
+  /* Reader preview overlay */
+  .reader-overlay { display: none; position: absolute; inset: 0; background: #000; z-index: 60; flex-direction: column; }
+  .reader-overlay.show { display: flex; }
+  .reader-bar { display: flex; align-items: center; padding: 8px 12px; background: rgba(0,0,0,0.7); flex-shrink: 0; }
+  .reader-bar .back { color: #fff; font-size: 24px; cursor: pointer; padding: 8px; }
+  .reader-bar .r-title { color: #fff; font-size: 16px; flex: 1; margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reader-bar .r-actions { display: flex; gap: 0; }
+  .reader-bar .r-actions button { background: none; border: none; color: #fff; width: 40px; height: 40px; cursor: pointer; font-size: 20px; }
+  .reader-content { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; position: relative; overflow: hidden; }
+  .reader-page { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 80px; transition: opacity 0.3s; }
+  .reader-info { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.8); font-size: 13px; }
+  .reader-nav { display: flex; justify-content: space-between; padding: 0 16px; position: absolute; top: 50%; width: 100%; transform: translateY(-50%); pointer-events: none; }
+  .reader-nav button { pointer-events: auto; background: rgba(0,0,0,0.4); color: #fff; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 20px; }
+
+  /* Controls panel */
+  .controls { width: 280px; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.12); align-self: flex-start; }
+  .controls h3 { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 14px; }
+  .controls .group { margin-bottom: 14px; }
+  .controls .group label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+  .controls .group select { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #ddd; font-size: 13px; background: #fff; }
+  .controls .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
+  .controls .toggle-row span { font-size: 13px; color: #333; }
+  .controls .toggle { width: 36px; height: 20px; border-radius: 10px; background: #ccc; cursor: pointer; position: relative; transition: 0.2s; border: none; }
+  .controls .toggle.on { background: #e94560; }
+  .controls .toggle::after { content: ''; width: 16px; height: 16px; border-radius: 50%; background: #fff; position: absolute; top: 2px; left: 2px; transition: 0.2s; }
+  .controls .toggle.on::after { left: 18px; }
+  .controls .hint { font-size: 11px; color: #999; line-height: 1.6; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+
+  @media (max-width: 780px) {
+    body { flex-direction: column; }
+    .controls { width: 100%; max-width: 390px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Controls -->
+<div class="controls">
+  <h3>🎮 演示控制</h3>
+  <div class="group">
+    <label>当前状态</label>
+    <select id="stateSelect" onchange="updateAll()">
+      <option value="empty">空状态（无漫画）</option>
+      <option value="list" selected>漫画列表（3 本）</option>
+      <option value="many">漫画列表（满）</option>
+    </select>
+  </div>
+  <div class="group">
+    <label>网格列数</label>
+    <select id="columnsSelect" onchange="updateAll()">
+      <option value="2" selected>2 列</option>
+      <option value="3">3 列</option>
+    </select>
+  </div>
+  <div class="group">
+    <div class="toggle-row">
+      <span>深色模式</span>
+      <button class="toggle on" id="darkToggle" onclick="toggleDark()"></button>
+    </div>
+  </div>
+  <div class="group">
+    <div class="toggle-row">
+      <span>显示导入 FAB</span>
+      <button class="toggle on" id="fabToggle" onclick="toggleFab()"></button>
+    </div>
+  </div>
+  <div class="hint">
+    💡 试试这些交互：<br>
+    • 点击右上「导入」或 FAB → 选择 ZIP 文件<br>
+    • 点击漫画封面 → 进入阅读器<br>
+    • 阅读器左右按钮翻页
+  </div>
+</div>
+
+<!-- Phone -->
+<div class="phone">
+  <div class="phone-notch">
+    <span class="time">9:41</span>
+    <span class="icons">📶 🔋</span>
+  </div>
+
+  <div class="app" id="app">
+    <!-- AppBar -->
+    <div class="appbar">
+      <span class="nav-icon">‹</span>
+      <div class="title-area">
+        <span class="icon">📁</span>
+        <span class="title-text">本地漫画</span>
+      </div>
+      <div class="actions">
+        <button title="搜索">🔍</button>
+        <button class="import-btn" onclick="showImportDialog()">导入</button>
+        <button title="更多">⋮</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content" id="content">
+      <div id="comicList"></div>
+    </div>
+
+    <!-- Import progress -->
+    <div class="progress-toast" id="progressToast">
+      <div class="toast-header">
+        <span class="toast-icon" id="toastIcon">📥</span>
+        <span class="toast-title" id="toastTitle">正在导入...</span>
+        <span class="toast-pct" id="toastPct">0%</span>
+      </div>
+      <div class="toast-track"><div class="toast-fill" id="toastFill" style="width:0%"></div></div>
+    </div>
+
+    <!-- FAB -->
+    <button class="fab" id="fabBtn" onclick="showImportDialog()">+</button>
+
+    <!-- File picker dialog -->
+    <div class="dialog-overlay" id="dialogOverlay" onclick="closeDialogBg(event)">
+      <div class="dialog" id="dialog">
+        <h3>选择 ZIP 漫画文件</h3>
+        <div class="desc">从设备存储中选择一个漫画压缩包导入到本地漫画库</div>
+        <div class="file-list" id="fileList"></div>
+        <div class="actions">
+          <button class="cancel" onclick="hideImportDialog()">取消</button>
+          <button class="confirm" id="confirmBtn" onclick="startImport()" disabled>导入</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reader overlay -->
+    <div class="reader-overlay" id="readerOverlay">
+      <div class="reader-bar">
+        <span class="back" onclick="closeReader()">‹</span>
+        <span class="r-title" id="readerTitle">漫画标题</span>
+        <div class="r-actions">
+          <button title="自动翻页">⏱</button>
+          <button title="章节">☰</button>
+          <button title="更多">⋮</button>
+        </div>
+      </div>
+      <div class="reader-content">
+        <div class="reader-nav">
+          <button onclick="prevPage()">‹</button>
+          <button onclick="nextPage()">›</button>
+        </div>
+        <div class="reader-page" id="readerPage">1</div>
+        <div class="reader-info" id="readerInfo">第 1 / 20 页</div>
+      </div>
+    </div>
+
+    <!-- Bottom Nav -->
+    <div class="bottom-nav">
+      <div class="item"><span class="nav-icon">🏠</span><span class="nav-label">探索</span></div>
+      <div class="item"><span class="nav-icon">📂</span><span class="nav-label">分类</span></div>
+      <div class="item active"><span class="nav-icon">📁</span><span class="nav-label">本地</span></div>
+      <div class="item"><span class="nav-icon">⭐</span><span class="nav-label">收藏</span></div>
+      <div class="item"><span class="nav-icon">👤</span><span class="nav-label">我的</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const state = {
+  listState: 'list',
+  columns: 2,
+  darkMode: true,
+  showFab: true,
+  selectedFile: null,
+  importing: false,
+  // reader
+  readerOpen: false,
+  readerComic: null,
+  readerPage: 1,
+  readerTotal: 20,
+};
+
+const sampleComics = [
+  { name: '进击的巨人 全卷', pages: 139, color: '#2d3436', size: '248MB', emoji: '🗡️' },
+  { name: '鬼灭之刃 第1-23卷', pages: 205, color: '#6c5ce7', size: '386MB', emoji: '👹' },
+  { name: 'SPY×FAMILY 1-10卷', pages: 71, color: '#d63031', size: '142MB', emoji: '🕵️' },
+  { name: '咒术回战 0-23卷', pages: 178, color: '#0984e3', size: '312MB', emoji: '⚡' },
+  { name: '海贼王 1-100卷', pages: 1080, color: '#fdcb6e', size: '1.8GB', emoji: '🏴‍☠️' },
+  { name: '钢之炼金术师 全卷', pages: 116, color: '#636e72', size: '215MB', emoji: '⚙️' },
+  { name: '东京喰种 全卷', pages: 143, color: '#e17055', size: '267MB', emoji: '👁️' },
+  { name: '死亡笔记 全卷', pages: 108, color: '#00b894', size: '196MB', emoji: '📖' },
+  { name: '灌篮高手 全卷', pages: 276, color: '#e84393', size: '512MB', emoji: '🏀' },
+  { name: '龙珠 1-42卷', pages: 520, color: '#f39c12', size: '956MB', emoji: '🐉' },
+];
+
+const fakeZipFiles = [
+  { name: '进击的巨人_全卷.zip', size: '248MB', date: '2025-03-15' },
+  { name: '鬼灭之刃_第1-23卷.zip', size: '386MB', date: '2025-04-02' },
+  { name: 'SPYxFAMILY_1-10.zip', size: '142MB', date: '2025-04-18' },
+  { name: '死亡笔记_全卷.zip', size: '196MB', date: '2025-02-20' },
+  { name: '钢炼_全卷.zip', size: '215MB', date: '2025-01-10' },
+  { name: '灌篮高手_全卷.zip', size: '512MB', date: '2024-12-25' },
+];
+
+function getComics() {
+  if (state.listState === 'empty') return [];
+  if (state.listState === 'list') return sampleComics.slice(0, 3);
+  return sampleComics;
+}
+
+function updateAll() {
+  state.listState = document.getElementById('stateSelect').value;
+  state.columns = parseInt(document.getElementById('columnsSelect').value);
+  render();
+}
+
+function render() {
+  const app = document.getElementById('app');
+  app.classList.toggle('light', !state.darkMode);
+
+  const container = document.getElementById('comicList');
+  const comics = getComics();
+
+  if (comics.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon-wrap"><span>📦</span></div>
+        <h3>还没有本地漫画</h3>
+        <p>点击右下角的 <span class="highlight">+</span> 按钮<br>导入 ZIP 格式的漫画压缩包</p>
+      </div>
+    `;
+  } else {
+    let html = '<div class="comic-grid' + (state.columns === 3 ? ' three' : '') + '">';
+    comics.forEach((c, i) => {
+      html += '<div class="comic-card" onclick="openReader(' + i + ')">';
+      html += '<div class="cover-wrap">';
+      html += '<div class="cover-img" style="background:linear-gradient(135deg,' + c.color + ',' + c.color + '88)">' + c.emoji + '</div>';
+      html += '<div class="format-badge">ZIP</div>';
+      html += '<div class="page-badge">' + c.pages + 'P</div>';
+      html += '</div>';
+      html += '<div class="info">';
+      html += '<div class="title">' + c.name + '</div>';
+      html += '<div class="meta">' + c.size + ' · ' + c.pages + ' 页</div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  document.getElementById('fabBtn').style.display = state.showFab ? 'flex' : 'none';
+}
+
+function toggleDark() {
+  state.darkMode = !state.darkMode;
+  document.getElementById('darkToggle').classList.toggle('on');
+  render();
+}
+
+function toggleFab() {
+  state.showFab = !state.showFab;
+  document.getElementById('fabToggle').classList.toggle('on');
+  render();
+}
+
+// Import dialog
+function showImportDialog() {
+  if (state.importing) return;
+  const list = document.getElementById('fileList');
+  list.innerHTML = '';
+  fakeZipFiles.forEach((f, i) => {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.dataset.index = i;
+    item.innerHTML = '<span class="file-icon">📦</span>' +
+      '<div class="file-info"><div class="file-name">' + f.name + '</div>' +
+      '<div class="file-meta">' + f.size + ' · ' + f.date + '</div></div>' +
+      '<span class="check">✓</span>';
+    item.onclick = () => selectFile(i, f.name);
+    list.appendChild(item);
+  });
+  document.getElementById('dialogOverlay').classList.add('show');
+  state.selectedFile = null;
+  document.getElementById('confirmBtn').disabled = true;
+}
+
+function hideImportDialog() {
+  document.getElementById('dialogOverlay').classList.remove('show');
+}
+
+function closeDialogBg(e) {
+  if (e.target === document.getElementById('dialogOverlay')) hideImportDialog();
+}
+
+function selectFile(index, name) {
+  state.selectedFile = { index, name };
+  document.querySelectorAll('.file-item').forEach((el) => {
+    el.classList.toggle('selected', parseInt(el.dataset.index) === index);
+  });
+  document.getElementById('confirmBtn').disabled = false;
+}
+
+function startImport() {
+  if (!state.selectedFile) return;
+  hideImportDialog();
+  state.importing = true;
+
+  const toast = document.getElementById('progressToast');
+  const fill = document.getElementById('toastFill');
+  const pct = document.getElementById('toastPct');
+  const title = document.getElementById('toastTitle');
+  const icon = document.getElementById('toastIcon');
+  toast.classList.add('show');
+  icon.textContent = '📥';
+  title.textContent = '正在导入 ' + state.selectedFile.name;
+
+  let progress = 0;
+  const interval = setInterval(() => {
+    progress += Math.random() * 14 + 4;
+    if (progress >= 100) {
+      progress = 100;
+      clearInterval(interval);
+      fill.style.width = '100%';
+      pct.textContent = '100%';
+      icon.textContent = '✅';
+      title.textContent = state.selectedFile.name + ' 导入完成';
+      state.importing = false;
+      if (state.listState === 'empty') {
+        document.getElementById('stateSelect').value = 'list';
+        state.listState = 'list';
+      }
+      setTimeout(() => {
+        toast.classList.remove('show');
+        render();
+      }, 1400);
+      return;
+    }
+    fill.style.width = progress + '%';
+    pct.textContent = Math.round(progress) + '%';
+  }, 180);
+}
+
+// Reader
+function openReader(index) {
+  const comics = getComics();
+  const comic = comics[index];
+  if (!comic) return;
+  state.readerOpen = true;
+  state.readerComic = comic;
+  state.readerPage = 1;
+  state.readerTotal = Math.min(comic.pages, 20);
+  document.getElementById('readerTitle').textContent = comic.name;
+  updateReaderPage();
+  document.getElementById('readerOverlay').classList.add('show');
+}
+
+function closeReader() {
+  state.readerOpen = false;
+  document.getElementById('readerOverlay').classList.remove('show');
+}
+
+function nextPage() {
+  if (state.readerPage < state.readerTotal) {
+    state.readerPage++;
+    updateReaderPage();
+  }
+}
+
+function prevPage() {
+  if (state.readerPage > 1) {
+    state.readerPage--;
+    updateReaderPage();
+  }
+}
+
+function updateReaderPage() {
+  const page = document.getElementById('readerPage');
+  const comic = state.readerComic;
+  page.style.opacity = '0';
+  setTimeout(() => {
+    page.textContent = comic.emoji;
+    page.style.background = 'linear-gradient(135deg,' + comic.color + ',' + comic.color + '88)';
+    page.style.opacity = '1';
+  }, 150);
+  document.getElementById('readerInfo').textContent = '第 ' + state.readerPage + ' / ' + state.readerTotal + ' 页';
+}
+
+// Init
+render();
+</script>
+</body>
+</html>
