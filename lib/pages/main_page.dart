@@ -53,6 +53,12 @@ void checkClipboard() async {
   }
 }
 
+/// 是否显示探索页导航。个人构建设为 false 隐藏探索页，
+/// 其余导航索引自动调整。设为 true 则与主线版本行为一致。
+/// 此设计便于合入主线更新：上游对探索页的修改仍会保留在此文件中，
+/// 仅运行时不显示入口。
+const bool showExplore = false;
+
 class MainPage extends StatefulWidget {
   const MainPage({Key? key}) : super(key: key);
 
@@ -84,9 +90,10 @@ class MainPageState extends State<MainPage> {
   List<Widget> get _pages => [
         const MePage(),
         FavoritesPage(),
-        ExplorePage(
-          key: Key(appdata.appSettings.explorePages.length.toString()),
-        ),
+        if (showExplore)
+          ExplorePage(
+            key: Key(appdata.appSettings.explorePages.length.toString()),
+          ),
         const AllCategoryPage(),
         const LocalComicPage(),
       ];
@@ -212,7 +219,13 @@ class MainPageState extends State<MainPage> {
   @override
   Widget build(BuildContext context) {
     return NaviPane(
-      initialPage: int.parse(appdata.settings[23]),
+      initialPage: showExplore
+          ? int.parse(appdata.settings[23])
+          : () {
+              final i = int.parse(appdata.settings[23]);
+              if (i > 1) return i - 1;
+              return i;
+            }(),
       observer: _observer,
       paneItems: [
         PaneItemEntry(
@@ -223,7 +236,8 @@ class MainPageState extends State<MainPage> {
             label: '收藏'.tl,
             icon: Icons.local_activity_outlined,
             activeIcon: Icons.local_activity),
-        PaneItemEntry(
+        if (showExplore)
+          PaneItemEntry(
             label: '探索'.tl,
             icon: Icons.explore_outlined,
             activeIcon: Icons.explore),
