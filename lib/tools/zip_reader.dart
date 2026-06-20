@@ -17,11 +17,15 @@ class LocalComic {
   /// 排序后的图片文件名列表（压缩包内的相对路径）。
   final List<String> imageFiles;
 
+  /// 封面缓存文件路径（缩略图），为空表示尚未缓存。
+  String? coverPath;
+
   LocalComic({
     required this.path,
     required this.title,
     required this.pageCount,
     required this.imageFiles,
+    this.coverPath,
   });
 
   String get id => path;
@@ -31,6 +35,7 @@ class LocalComic {
         'title': title,
         'pageCount': pageCount,
         'imageFiles': imageFiles,
+        if (coverPath != null) 'coverPath': coverPath,
       };
 
   factory LocalComic.fromMap(Map<String, dynamic> map) => LocalComic(
@@ -38,6 +43,7 @@ class LocalComic {
         title: map['title'] as String,
         pageCount: map['pageCount'] as int,
         imageFiles: (map['imageFiles'] as List).cast<String>(),
+        coverPath: map['coverPath'] as String?,
       );
 }
 
@@ -104,15 +110,15 @@ class ZipReader {
 
   /// 读取 ZIP 中指定索引的图片字节。
   static Future<Uint8List> readImage(String filePath, int index) async {
-    final archive = _cache[filePath];
+    var archive = _cache[filePath];
     if (archive == null) {
       final bytes = await File(filePath).readAsBytes();
-      _cache[filePath] = ZipDecoder().decodeBytes(bytes);
+      archive = ZipDecoder().decodeBytes(bytes);
+      _cache[filePath] = archive;
     }
-    final a = _cache[filePath]!;
     // 取第 index 个图片文件
     var found = 0;
-    for (final f in a) {
+    for (final f in archive) {
       if (!f.isFile) continue;
       if (_isImage(f.name)) {
         if (found == index) {
@@ -122,7 +128,7 @@ class ZipReader {
       }
     }
     // 没找到指定索引的文件，返回第一个文件
-    return Uint8List.fromList(a.first.content as List<int>);
+    return Uint8List.fromList(archive.first.content as List<int>);
   }
 
   /// 关闭某个 ZIP 的缓存，释放内存。

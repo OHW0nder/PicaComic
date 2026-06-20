@@ -1,14 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:pica_comic/foundation/app.dart';
 import 'package:pica_comic/foundation/log.dart';
 import 'package:pica_comic/tools/zip_reader.dart';
 
 /// 本地漫画库的管理器。
-///
-/// 已导入的本地漫画（ZIP）元数据持久化到 `${App.dataPath}/local_comics.json`。
-/// 实际图片数据仍存放在原 ZIP 文件中，按需读取。
 class LocalComicsManager {
   LocalComicsManager._create();
 
@@ -23,6 +21,8 @@ class LocalComicsManager {
   bool _loaded = false;
 
   String get _filePath => "${App.dataPath}${pathSep}local_comics.json";
+
+  String get _coverDir => "${App.dataPath}${pathSep}local_covers";
 
   String get pathSep => Platform.pathSeparator;
 
@@ -53,16 +53,39 @@ class LocalComicsManager {
   /// 导入一个 ZIP 文件。返回导入成功的漫画，失败返回 null。
   Future<LocalComic?> import(String filePath) async {
     await load();
-    // 已存在则跳过
     final existing = _comics.where((c) => c.path == filePath);
     if (existing.isNotEmpty) return existing.first;
 
     final comic = await ZipReader.readComic(filePath);
     if (comic == null) return null;
 
+    // 缓存封面
+    await _cacheCover(comic);
+
     _comics.add(comic);
     await _save();
     return comic;
+  }
+
+  /// 提取并缓存封面缩略图。
+  Future<void> _cacheCover(LocalComic comic) async {
+    try {
+      final dir = Directory(_coverDir);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      // 取第一张图作为封面
+      final bytes = await ZipReader.readImage(comic.path, 0);
+      final hash = sha256.convert(bytes).toString().substring(0, 16);
+      final coverFile = File("${_coverDir}${pathSep}$hash.jpg");
+      if (!await coverFile.exists()) {
+        await coverFile.writeAsBytes(bytes);
+      }
+      comic.coverPath = coverFile.path;
+    } catch (e, s) {
+      LogManager.addLog(LogLevel.warning, "IO",
+          "Failed to cache cover for ${comic.title}\n$e\n$s");
+    }
   }
 
   /// 删除一个本地漫画（仅从列表移除，不删除原 ZIP 文件）。

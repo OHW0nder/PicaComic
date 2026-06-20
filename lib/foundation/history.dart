@@ -37,6 +37,8 @@ final class HistoryType {
 
   static HistoryType get nhentai => const HistoryType(5);
 
+  static HistoryType get local => const HistoryType(10);
+
   final int value;
 
   String get name {

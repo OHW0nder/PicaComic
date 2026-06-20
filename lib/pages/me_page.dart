@@ -6,7 +6,6 @@ import 'package:pica_comic/foundation/image_loader/cached_image.dart';
 import 'package:pica_comic/network/download.dart';
 import 'accounts_page.dart';
 import 'package:pica_comic/pages/download_page.dart';
-import 'package:pica_comic/pages/local_comic/local_comic_page.dart';
 import 'package:pica_comic/pages/tools.dart';
 import 'package:pica_comic/foundation/app.dart';
 import 'history_page.dart';
@@ -49,7 +48,6 @@ class MePage extends StatelessWidget {
                             const SizedBox(
                               height: 12,
                             ),
-                            buildLocalComics(context, width),
                           ],
                         ),
                       ),
@@ -81,10 +79,6 @@ class MePage extends StatelessWidget {
                     height: 12,
                   ),
                   buildDownload(context, width),
-                  const SizedBox(
-                    height: 12,
-                  ),
-                  buildLocalComics(context, width),
                   const SizedBox(
                     height: 12,
                   ),
@@ -205,15 +199,6 @@ class MePage extends StatelessWidget {
       description:
           "共 @a 部漫画".tlParams({"a": DownloadManager().total.toString()}),
       onTap: () => context.to(() => const DownloadPage()),
-    );
-  }
-
-  Widget buildLocalComics(BuildContext context, double width) {
-    return _MePageCard(
-      icon: const Icon(Icons.folder_zip_outlined),
-      title: "本地漫画".tl,
-      description: "导入并阅读本地 ZIP 压缩包".tl,
-      onTap: () => context.to(() => const LocalComicPage()),
     );
   }
 

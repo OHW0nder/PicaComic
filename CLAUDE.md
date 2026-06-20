@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Session Rules
+
+- **Do NOT commit or push code unless explicitly asked.** Wait for the user to request commits.
+- **Do NOT run `flutter build` unless explicitly asked.** Only run `flutter analyze` to verify code.
+- All changes stay in the working tree until the user says "commit" or "push".
+
 ## Commands
 
 - **Get dependencies**: `flutter pub get`

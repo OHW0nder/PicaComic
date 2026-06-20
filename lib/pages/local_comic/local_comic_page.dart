@@ -1,7 +1,11 @@
-import 'package:file_selector/file_selector.dart';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_file_dialog/flutter_file_dialog.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:pica_comic/components/components.dart';
 import 'package:pica_comic/foundation/app.dart';
+import 'package:pica_comic/foundation/history.dart';
 import 'package:pica_comic/foundation/local_comics.dart';
 import 'package:pica_comic/foundation/image_loader/zip_image_provider.dart';
 import 'package:pica_comic/pages/reader/comic_reading_page.dart';
@@ -25,17 +29,23 @@ class LocalComicPageLogic extends StateController {
     importing = true;
     update();
     try {
-      const typeGroup = XTypeGroup(
-        label: 'ZIP',
-        extensions: <String>['zip'],
-      );
-      final file = await openFile(acceptedTypeGroups: [typeGroup]);
-      if (file == null) {
+      String? path;
+      if (App.isMobile) {
+        var params = const OpenFileDialogParams();
+        path = await FlutterFileDialog.pickFile(params: params);
+      } else {
+        const typeGroup = XTypeGroup(
+          label: 'ZIP',
+          extensions: <String>['zip'],
+        );
+        final file = await openFile(acceptedTypeGroups: [typeGroup]);
+        path = file?.path;
+      }
+      if (path == null) {
         importing = false;
         update();
         return;
       }
-      final path = file.path;
       final comic = await LocalComicsManager().import(path);
       if (comic == null) {
         showToast(message: "导入失败: 无法读取ZIP或未找到图片".tl);
@@ -66,9 +76,23 @@ class LocalComicPageLogic extends StateController {
     );
   }
 
-  void read(LocalComic comic) {
+  void read(LocalComic comic) async {
+    final existing = HistoryManager().findSync(comic.path);
+    final initialPage = existing?.page ?? 1;
+    if (existing == null) {
+      HistoryManager().addHistory(History(
+        HistoryType.local,
+        DateTime.now(),
+        comic.title,
+        '',
+        '',
+        1,
+        1,
+        comic.path,
+      ));
+    }
     App.globalTo(
-      () => ComicReadingPage.local(comic, 1),
+      () => ComicReadingPage.local(comic, initialPage),
     );
   }
 }
@@ -84,28 +108,6 @@ class LocalComicPage extends StatelessWidget {
       logic.reload();
     }
     return Scaffold(
-      appBar: AppBar(
-        title: Text("本地漫画".tl),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              // 预留搜索入口
-            },
-          ),
-          IconButton(
-            icon: logic.importing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.file_upload_outlined),
-            tooltip: "导入".tl,
-            onPressed: logic.importing ? null : () => logic.import(),
-          ),
-        ],
-      ),
       floatingActionButton: FloatingActionButton(
         heroTag: "LocalComicImport",
         onPressed: logic.importing ? null : () => logic.import(),
@@ -120,19 +122,26 @@ class LocalComicPage extends StatelessWidget {
         }
         return SmoothCustomScrollView(
           slivers: [
-            SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                childCount: logic.comics.length,
-                (context, index) {
-                  final comic = logic.comics[index];
-                  return _LocalComicTile(
-                    comic: comic,
-                    onTap: () => logic.read(comic),
-                    onLongPress: () => logic.remove(comic),
-                  );
-                },
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverGrid(
+                delegate: SliverChildBuilderDelegate(
+                  childCount: logic.comics.length,
+                  (context, index) {
+                    final comic = logic.comics[index];
+                    return _LocalComicTile(
+                      comic: comic,
+                      onTap: () => logic.read(comic),
+                      onLongPress: () => logic.remove(comic),
+                    );
+                  },
+                ),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 20,
+                  childAspectRatio: 0.66,
+                ),
               ),
-              gridDelegate: SliverGridDelegateWithComics(),
             ),
           ],
         );
@@ -178,12 +187,15 @@ class _LocalComicTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageProvider = comic.coverPath != null
+        ? FileImage(File(comic.coverPath!)) as ImageProvider
+        : ZipImageProvider(comic.path, 0) as ImageProvider;
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.symmetric(vertical: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -196,7 +208,7 @@ class _LocalComicTile extends StatelessWidget {
                       child: Container(
                         color: Theme.of(context).colorScheme.secondaryContainer,
                         child: Image(
-                          image: ZipImageProvider(comic.path, 0),
+                          image: imageProvider,
                           fit: BoxFit.cover,
                           width: double.infinity,
                           height: double.infinity,

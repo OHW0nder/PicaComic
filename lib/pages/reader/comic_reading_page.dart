@@ -208,8 +208,10 @@ class ComicReadingPage extends StatelessWidget {
         history?.page = logic.index;
       }
     }
-    history!.maxPage = logic.length;
-    HistoryManager().saveReadHistory(history!, updateMePage);
+    if (history != null) {
+      history!.maxPage = logic.length;
+      HistoryManager().saveReadHistory(history!, updateMePage);
+    }
   }
 
   bool get useDarkBackground => appdata.appSettings.useDarkBackground;
