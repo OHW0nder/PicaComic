@@ -71,3 +71,22 @@ The image restructuring algorithm used to display jm images is from this project
 [![Readme Card](https://github-readme-stats.vercel.app/api/pin/?username=EhTagTranslation&repo=Database)](https://github.com/EhTagTranslation/Database)
 
 The Chinese translation of the manga tags is from this project.
+
+## Branch Strategy
+
+This repository is maintained as a fork of [Pacalini/PicaComic](https://github.com/Pacalini/PicaComic):
+
+- `master` mirrors upstream exactly and is only updated by syncing from upstream.
+- `dev` is the actively maintained branch where all custom development happens.
+- No pull requests are opened against the upstream project.
+
+Sync upstream:
+
+```shell
+git fetch upstream
+git checkout master
+git reset --hard upstream/master
+git push origin master --force-with-lease
+git checkout dev
+git merge master
+```
