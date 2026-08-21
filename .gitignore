@@ -45,3 +45,16 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .vscode/
+# AI tools / agent files
+AGENTS.md
+CLAUDE.md
+.reasonix/
+.claude/
+.cursor/
+.codex/
+.aider*
+.copilot/
+.gemini/
+.continue/
+.windsurf/
+.trae/
