@@ -58,3 +58,7 @@ CLAUDE.md
 .continue/
 .windsurf/
 .trae/
+
+# 构建产物与日志（2026-08-22 迁移前清理）
+/android/build/
+/output.txt
