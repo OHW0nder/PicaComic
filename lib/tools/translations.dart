@@ -10,12 +10,12 @@ extension AppTranslation on String {
     if (locale.languageCode == "en") {
       key = "en_US";
     }
-    return (translations[key]?[this]) ?? this;
+    return translations?[key]?[this] ?? this;
   }
 
   String get tl => _translate();
 
-  String get tlEN => translations["en_US"]![this] ?? this;
+  String get tlEN => translations?["en_US"]?[this] ?? this;
 
   String tlParams(Map<String, String> values) {
     var res = _translate();
@@ -25,9 +25,10 @@ extension AppTranslation on String {
     return res;
   }
 
-  static late final Map<String, Map<String, String>> translations;
+  /// 为 null 表示翻译表尚未加载完成，此时直接显示原文。
+  static Map<String, Map<String, String>>? translations;
 
-  static Future<void> init() async{
+  static Future<void> init() async {
     var data = await rootBundle.load("assets/translation.json");
     var json = jsonDecode(utf8.decode(data.buffer.asUint8List()));
     translations = { for (var e in json.entries) e.key : Map<String, String>.from(e.value) };

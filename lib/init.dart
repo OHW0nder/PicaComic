@@ -34,6 +34,10 @@ import 'network/nhentai_network/nhentai_main_network.dart';
 Future<void> init() async {
   try {
     await App.init();
+    // 翻译表尽早加载且独立于后续步骤：
+    // 之前放在链条末尾的 Future.wait 里，任何一步失败都会导致
+    // translations 未初始化，UI 首次访问 .tl 即崩溃
+    await AppTranslation.init();
     io.File? logFile = io.File("${App.dataPath}/log.txt");
     if(App.isAndroid) {
       var externalDirectory = await getExternalStorageDirectory();
@@ -83,7 +87,6 @@ Future<void> init() async {
       JmNetwork().init(),
       LocalFavoritesManager().init(),
       HistoryManager().init(),
-      AppTranslation.init(),
     ]);
     CacheManager().setLimitSize(appdata.appSettings.cacheLimit);
   } catch (e, s) {
