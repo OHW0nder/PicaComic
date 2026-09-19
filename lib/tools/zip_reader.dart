@@ -16,6 +16,13 @@ class LocalComic {
   /// 排序后的图片文件名列表（压缩包内的相对路径）。
   final List<String> imageFiles;
 
+  /// 各话标题（按压缩包内第一层子文件夹分组），按阅读顺序排列。
+  /// 为空或长度 <= 1 表示整个压缩包是单话。
+  final List<String>? epTitles;
+
+  /// 各话第一页在 [imageFiles] 中的下标（0-based），与 [epTitles] 一一对应。
+  final List<int>? epStarts;
+
   /// 封面缓存文件路径（缩略图），为空表示尚未缓存。
   String? coverPath;
 
@@ -24,16 +31,39 @@ class LocalComic {
     required this.title,
     required this.pageCount,
     required this.imageFiles,
+    this.epTitles,
+    this.epStarts,
     this.coverPath,
   });
 
   String get id => path;
+
+  /// 压缩包是否包含多话（存在多个第一层子文件夹）。
+  bool get hasMultipleEps => epTitles != null && epTitles!.length > 1;
+
+  /// 话 [ep]（从 1 开始）在 [imageFiles] 中的起始下标。
+  int epStartPage(int ep) => epStarts![ep - 1];
+
+  /// 话 [ep]（从 1 开始）的页数。
+  int epPageCount(int ep) {
+    final starts = epStarts!;
+    final start = starts[ep - 1];
+    final end = ep < starts.length ? starts[ep] : pageCount;
+    return end - start;
+  }
+
+  /// 将阅读器语义的 (ep, page)（page 为话内 0-based 下标）
+  /// 映射为 [imageFiles] 的全局下标。
+  int globalPageIndex(int ep, int page) =>
+      hasMultipleEps ? epStartPage(ep) + page : page;
 
   Map<String, dynamic> toMap() => {
         'path': path,
         'title': title,
         'pageCount': pageCount,
         'imageFiles': imageFiles,
+        if (epTitles != null) 'epTitles': epTitles,
+        if (epStarts != null) 'epStarts': epStarts,
         if (coverPath != null) 'coverPath': coverPath,
       };
 
@@ -42,6 +72,11 @@ class LocalComic {
         title: map['title'] as String,
         pageCount: map['pageCount'] as int,
         imageFiles: (map['imageFiles'] as List).cast<String>(),
+        epTitles: map['epTitles'] != null
+            ? (map['epTitles'] as List).cast<String>()
+            : null,
+        epStarts:
+            map['epStarts'] != null ? (map['epStarts'] as List).cast<int>() : null,
         coverPath: map['coverPath'] as String?,
       );
 }
@@ -64,6 +99,22 @@ String _extension(String path) {
 bool _isImage(String name) {
   final ext = _extension(name).toLowerCase();
   return _imageExtensions.contains(ext);
+}
+
+/// 返回 ZIP 条目路径的第一层目录名；位于根目录时返回空字符串。
+/// 兼容 Windows 风格的反斜杠分隔符。
+String _firstPathSegment(String path) {
+  final slash = path.indexOf('/');
+  final backslash = path.indexOf('\\');
+  int index;
+  if (slash < 0) {
+    index = backslash;
+  } else if (backslash < 0) {
+    index = slash;
+  } else {
+    index = slash < backslash ? slash : backslash;
+  }
+  return index > 0 ? path.substring(0, index) : '';
 }
 
 // ZIP 签名常量
@@ -124,16 +175,51 @@ class ZipReader {
 
   /// 解析 ZIP 文件，返回 [LocalComic] 元数据。
   /// 若文件不是有效的 ZIP 或没有图片，返回 null。
+  ///
+  /// 图片按第一层子文件夹分组为多话；若所有图片都在根目录（或仅有一个
+  /// 子文件夹），则视为单话，[LocalComic.epTitles] 为 null。
   static Future<LocalComic?> readComic(String filePath) async {
     try {
       final file = await File(filePath).open(mode: FileMode.read);
       try {
         final length = await file.length();
-        final index = await _readCentralDirectory(file, length);
-        final imageNames = index.imageNames;
+        var index = await _readCentralDirectory(file, length);
+        var imageNames = index.imageNames;
         if (imageNames.isEmpty) return null;
 
         final title = _basenameWithoutExtension(filePath);
+
+        // 按第一层子文件夹分话
+        final groups = <String, List<int>>{};
+        for (int i = 0; i < imageNames.length; i++) {
+          (groups[_firstPathSegment(imageNames[i])] ??= []).add(i);
+        }
+
+        List<String>? epTitles;
+        List<int>? epStarts;
+        if (groups.length > 1) {
+          final folderNames = groups.keys.toList();
+          // 根目录图片排在最前，其余按自然排序
+          folderNames.sort((a, b) {
+            if (a.isEmpty) return -1;
+            if (b.isEmpty) return 1;
+            return _naturalCompare(a, b);
+          });
+          final sortedNames = <String>[];
+          final sortedEntries = <_ZipEntryInfo>[];
+          epTitles = <String>[];
+          epStarts = <int>[];
+          for (final folder in folderNames) {
+            epStarts.add(sortedNames.length);
+            epTitles.add(folder.isEmpty ? title : folder);
+            for (final i in groups[folder]!) {
+              sortedNames.add(imageNames[i]);
+              sortedEntries.add(index.imageEntries[i]);
+            }
+          }
+          imageNames = sortedNames;
+          index = _ZipIndex(index.allEntries, sortedNames, sortedEntries);
+        }
 
         // 缓存索引供后续按页读取
         _indices[filePath] = index;
@@ -143,6 +229,8 @@ class ZipReader {
           title: title,
           pageCount: imageNames.length,
           imageFiles: imageNames,
+          epTitles: epTitles,
+          epStarts: epStarts,
         );
       } finally {
         await file.close();
@@ -282,23 +370,23 @@ class ZipReader {
 
   /// 在文件末尾查找 EOCD 签名。
   ///
-  /// EOCD 固定位于文件末尾 65557 字节范围内（因为 comment 最长 65535 字节）。
-  /// 从最后 22 字节开始向前搜索签名 0x06054b50。
+  /// EOCD 固定位于文件末尾 22 字节处（无 comment 时），且整体不会超出
+  /// 末尾 22 + 65535 字节范围（comment 最长 65535 字节）。
+  /// 搜索窗口必须覆盖到文件末尾，否则无 comment 的 zip 永远找不到 EOCD。
   static Future<int> _findEndOfCentralDirectory(
       RandomAccessFile file, int fileLength) async {
     const eocdMinSize = 22;
     if (fileLength < eocdMinSize) return -1;
 
-    final searchEnd = fileLength - eocdMinSize;
-    final searchStart = (searchEnd > 65557) ? searchEnd - 65557 : 0;
+    final searchStart =
+        (fileLength > eocdMinSize + 65557) ? fileLength - eocdMinSize - 65557 : 0;
 
     await file.setPosition(searchStart);
-    final searchBytes = await file.read(searchEnd - searchStart);
+    final searchBytes = await file.read(fileLength - searchStart);
 
     // 从后往前找签名
     for (int i = searchBytes.length - eocdMinSize; i >= 0; i--) {
       if (searchBytes[i] == 0x50 &&
-          i + 3 < searchBytes.length &&
           searchBytes[i + 1] == 0x4b &&
           searchBytes[i + 2] == 0x05 &&
           searchBytes[i + 3] == 0x06) {
@@ -324,8 +412,8 @@ class ZipReader {
       throw const FormatException('Invalid local file header signature');
     }
     // versionNeeded(2) + flags(2) + compressionMethod(2) + modTime(2) +
-    // modDate(2) + crc32(4) + compressedSize(4) + uncompressedSize(4)
-    await _skip(file, 20);
+    // modDate(2) + crc32(4) + compressedSize(4) + uncompressedSize(4) = 22
+    await _skip(file, 22);
     final filenameLength = await _readUint16(file);
     final extraFieldLength = await _readUint16(file);
     // 跳过 filename + extra field

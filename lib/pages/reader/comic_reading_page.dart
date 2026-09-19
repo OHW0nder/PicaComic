@@ -92,8 +92,8 @@ class ComicReadingPage extends StatelessWidget {
   }
 
   ComicReadingPage.local(LocalComic comic, int initialPageLocal,
-      {super.key})
-      : initialEp = 1,
+      {int initialEp = 1, super.key})
+      : initialEp = initialEp,
         initialPage = initialPageLocal,
         readingData = LocalReadingData(comic) {
     StateController.put(ComicReadingPageLogic(

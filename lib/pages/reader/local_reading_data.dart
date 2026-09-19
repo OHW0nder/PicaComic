@@ -22,10 +22,15 @@ class LocalReadingData extends ReadingData {
   String get sourceKey => "local";
 
   @override
-  bool get hasEp => false;
+  bool get hasEp => comic.hasMultipleEps;
 
   @override
-  Map<String, String>? get eps => null;
+  Map<String, String>? get eps => comic.hasMultipleEps
+      ? {
+          for (var i = 0; i < comic.epTitles!.length; i++)
+            "${i + 1}": comic.epTitles![i]
+        }
+      : null;
 
   @override
   bool get downloaded => false;
@@ -35,11 +40,13 @@ class LocalReadingData extends ReadingData {
 
   @override
   String buildImageKey(int ep, int page, String url) =>
-      "local_zip://${comic.id}#$page";
+      "local_zip://${comic.id}#${comic.globalPageIndex(ep, page)}";
 
   @override
   Future<Res<List<String>>> loadEpNetwork(int ep) async {
-    return Res(List.filled(comic.pageCount, ""));
+    final count =
+        comic.hasMultipleEps ? comic.epPageCount(ep) : comic.pageCount;
+    return Res(List.filled(count, ""));
   }
 
   @override
@@ -49,6 +56,6 @@ class LocalReadingData extends ReadingData {
 
   @override
   ImageProvider createImageProvider(int ep, int page, String url) {
-    return ZipImageProvider(comic.path, page);
+    return ZipImageProvider(comic.path, comic.globalPageIndex(ep, page));
   }
 }

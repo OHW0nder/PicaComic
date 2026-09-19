@@ -35,8 +35,8 @@ class LocalComicPageLogic extends StateController {
         path = await FlutterFileDialog.pickFile(params: params);
       } else {
         const typeGroup = XTypeGroup(
-          label: 'ZIP',
-          extensions: <String>['zip'],
+          label: 'ZIP/CBZ',
+          extensions: <String>['zip', 'cbz'],
         );
         final file = await openFile(acceptedTypeGroups: [typeGroup]);
         path = file?.path;
@@ -79,6 +79,7 @@ class LocalComicPageLogic extends StateController {
   void read(LocalComic comic) async {
     final existing = HistoryManager().findSync(comic.path);
     final initialPage = existing?.page ?? 1;
+    final initialEp = existing == null || existing.ep < 1 ? 1 : existing.ep;
     if (existing == null) {
       HistoryManager().addHistory(History(
         HistoryType.local,
@@ -92,7 +93,7 @@ class LocalComicPageLogic extends StateController {
       ));
     }
     App.globalTo(
-      () => ComicReadingPage.local(comic, initialPage),
+      () => ComicReadingPage.local(comic, initialPage, initialEp: initialEp),
     );
   }
 }
@@ -252,7 +253,9 @@ class _LocalComicTile extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              "${comic.pageCount} 页",
+              comic.hasMultipleEps
+                  ? "${comic.epTitles!.length}话 · ${comic.pageCount} 页"
+                  : "${comic.pageCount} 页",
               style: TextStyle(
                 fontSize: 11,
                 color: Theme.of(context).colorScheme.outline,
