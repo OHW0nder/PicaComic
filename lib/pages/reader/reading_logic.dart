@@ -139,6 +139,13 @@ class ComicReadingPageLogic extends StateController {
   ///当前的页面, 0和最后一个为空白页, 用于进行章节跳转
   set index(int value) {
     _index = value;
+    // 多话续接时, 根据全局页码自动更新当前章节序号
+    if (_epStarts.isNotEmpty) {
+      var newOrder = epOrderAt(value - 1);
+      if (newOrder != order) {
+        order = newOrder;
+      }
+    }
     for (var element in _indexChangeCallbacks) {
       element(value);
     }
@@ -164,8 +171,107 @@ class ComicReadingPageLogic extends StateController {
   ///是否显示设置窗口
   bool showSettings = false;
 
-  ///所有的图片链接
+  ///所有的图片链接(自动续接下一话时, 为多话拼接后的列表)
   var urls = <String>[];
+
+  ///已拼接章节的第一页在 [urls] 中的偏移(0基), 键为章节序号(从1开始)
+  final Map<int, int> _epStarts = {};
+
+  ///最后拼接的章节序号
+  int _lastAppendedOrder = 0;
+
+  ///内容版本号, 异步续接完成时用于判断内容是否已被章节切换重置
+  int _contentGeneration = 0;
+
+  bool _appendingNextEp = false;
+
+  ///重置内容为空(章节切换/重新加载时调用)
+  void resetContent() {
+    _contentGeneration++;
+    _epStarts.clear();
+    _lastAppendedOrder = 0;
+    _appendingNextEp = false;
+    urls = [];
+  }
+
+  ///将内容设置为单一章节(初次加载时调用)
+  void setContent(int epOrder, List<String> epUrls) {
+    _contentGeneration++;
+    _epStarts.clear();
+    _epStarts[epOrder] = 0;
+    _lastAppendedOrder = epOrder;
+    _appendingNextEp = false;
+    urls = epUrls;
+  }
+
+  ///全局页码(0基)对应的章节序号
+  int epOrderAt(int globalPage) {
+    if (_epStarts.isEmpty) {
+      return order;
+    }
+    int result = _lastAppendedOrder;
+    for (var entry in _epStarts.entries) {
+      if (globalPage >= entry.value) {
+        result = entry.key;
+      }
+    }
+    return result;
+  }
+
+  ///全局页码(0基)对应章节内的局部页码(0基)
+  int localPageAt(int globalPage) {
+    var ep = epOrderAt(globalPage);
+    return globalPage - (_epStarts[ep] ?? 0);
+  }
+
+  ///已拼接的指定章节的页数
+  int epLength(int epOrder) {
+    int start = _epStarts[epOrder] ?? 0;
+    int? nextStart;
+    for (var entry in _epStarts.entries) {
+      if (entry.key > epOrder) {
+        nextStart = entry.value;
+        break;
+      }
+    }
+    return (nextStart ?? urls.length) - start;
+  }
+
+  ///是否还有可以自动续接的下一话
+  bool get hasEpToAppend =>
+      data.hasEp &&
+      _lastAppendedOrder > 0 &&
+      _lastAppendedOrder < (data.eps?.length ?? 0);
+
+  ///自动续接下一话: 将下一话内容拼接到当前内容末尾, 成功返回true
+  Future<bool> appendNextEp() async {
+    if (!hasEpToAppend || _appendingNextEp) {
+      return false;
+    }
+    _appendingNextEp = true;
+    int nextOrder = _lastAppendedOrder + 1;
+    int generation = _contentGeneration;
+    var res = await data.loadEp(nextOrder);
+    if (generation != _contentGeneration) {
+      // 期间发生了章节切换, 丢弃结果
+      return false;
+    }
+    _appendingNextEp = false;
+    if (res.error) {
+      return false;
+    }
+    _epStarts[nextOrder] = urls.length;
+    _lastAppendedOrder = nextOrder;
+    urls.addAll(res.data);
+    update();
+    return true;
+  }
+
+  ///加载全局页码(0基)对应的图片(多话续接时自动映射到对应章节)
+  Stream<DownloadProgress> loadImageAt(int globalPage) {
+    return data.loadImage(
+        epOrderAt(globalPage), localPageAt(globalPage), urls[globalPage]);
+  }
 
   void reload() {
     index = 1;
@@ -247,8 +353,14 @@ class ComicReadingPageLogic extends StateController {
       }
       return;
     }
+    // 下一话已续接到当前内容时, 直接跳转到下一话第一页, 无需重新加载
+    int? nextStart = _epStarts[order + 1];
+    if (nextStart != null) {
+      jumpToPage(nextStart + 1, true);
+      return;
+    }
     order += 1;
-    urls = [];
+    resetContent();
     isLoading = true;
     tools = false;
     index = 1;
@@ -259,7 +371,7 @@ class ComicReadingPageLogic extends StateController {
 
   void jumpToChapter(int index){
     order = index;
-    urls = [];
+    resetContent();
     isLoading = true;
     tools = false;
     this.index = 1;
@@ -280,9 +392,15 @@ class ComicReadingPageLogic extends StateController {
       }
       return;
     }
+    // 上一话已续接在当前内容中时, 直接跳转到上一话最后一页, 无需重新加载
+    int? prevStart = _epStarts[order - 1];
+    if (prevStart != null) {
+      jumpToPage(prevStart + epLength(order - 1), true);
+      return;
+    }
 
     order -= 1;
-    urls = [];
+    resetContent();
     isLoading = true;
     tools = false;
     pageController = PageController(initialPage: 1);
@@ -307,48 +425,63 @@ class ComicReadingPageLogic extends StateController {
     }
     if (readingMethod != ReadingMethod.topToBottomContinuously &&
         index >= urls.length - 1) {
-      runningAutoPageTurning = false;
-      update();
-      return;
+      // 已到本话末尾, 尝试自动续接下一话
+      if (!runningAutoPageTurning || !await appendNextEp()) {
+        runningAutoPageTurning = false;
+        update();
+        return;
+      }
     }
     int sec = int.parse(appdata.settings[33]);
     if (readingMethod == ReadingMethod.topToBottomContinuously) {
       // 连续模式：单次平滑上滑到本话结束，拖拽时暂停，松手后继续
       double viewportHeight = scrollController.position.viewportDimension;
-      double maxScroll = scrollController.position.maxScrollExtent;
 
+      outer:
       while (runningAutoPageTurning) {
-        // 用户刚拖拽完？等待弹跳完全结束
-        if (_userWasDragging) {
-          if (!scrollController.position.isScrollingNotifier.value) {
-            _userWasDragging = false;
-          }
-          await Future.delayed(const Duration(milliseconds: 50));
-          continue;
-        }
-        double remaining = maxScroll - scrollController.position.pixels;
-        if (remaining <= 1) {
-          break;
-        }
-        double totalSec = (remaining / viewportHeight) * sec;
-        try {
-          await scrollController.animateTo(
-            maxScroll,
-            duration:
-                Duration(milliseconds: (totalSec * 1000).round()),
-            curve: Curves.linear,
-          );
-          // animateTo 正常返回，但需要确认是否真的到了终点
-          // （被手势中断时也会正常返回，但位置没到终点）
-          if (scrollController.position.pixels < maxScroll - 1) {
+        double maxScroll = scrollController.position.maxScrollExtent;
+        while (runningAutoPageTurning) {
+          // 用户刚拖拽完？等待弹跳完全结束
+          if (_userWasDragging) {
+            if (!scrollController.position.isScrollingNotifier.value) {
+              _userWasDragging = false;
+            }
             await Future.delayed(const Duration(milliseconds: 50));
             continue;
           }
-          break; // 真正到了终点
-        } catch (_) {
-          // 被中断（点击或拖拽），短暂等待后循环重新开始
-          await Future.delayed(const Duration(milliseconds: 50));
+          double remaining = maxScroll - scrollController.position.pixels;
+          if (remaining <= 1) {
+            break;
+          }
+          double totalSec = (remaining / viewportHeight) * sec;
+          try {
+            await scrollController.animateTo(
+              maxScroll,
+              duration:
+                  Duration(milliseconds: (totalSec * 1000).round()),
+              curve: Curves.linear,
+            );
+            // animateTo 正常返回，但需要确认是否真的到了终点
+            // （被手势中断时也会正常返回，但位置没到终点）
+            if (scrollController.position.pixels < maxScroll - 1) {
+              await Future.delayed(const Duration(milliseconds: 50));
+              continue;
+            }
+            break; // 真正到了终点
+          } catch (_) {
+            // 被中断（点击或拖拽），短暂等待后循环重新开始
+            await Future.delayed(const Duration(milliseconds: 50));
+          }
         }
+        if (!runningAutoPageTurning) {
+          return;
+        }
+        // 到达本话末尾, 尝试自动续接下一话, 续接后继续滚动
+        if (!await appendNextEp()) {
+          break outer;
+        }
+        // 等待列表完成布局, 使 maxScrollExtent 反映新增内容
+        await Future.delayed(const Duration(milliseconds: 200));
       }
       runningAutoPageTurning = false;
       update();
@@ -363,9 +496,12 @@ class ComicReadingPageLogic extends StateController {
         }
       }
       if (index >= urls.length - 1) {
-        runningAutoPageTurning = false;
-        update();
-        return;
+        // 已到本话末尾, 尝试自动续接下一话
+        if (!await appendNextEp()) {
+          runningAutoPageTurning = false;
+          update();
+          return;
+        }
       }
       try {
         await pageController.animateToPage(
@@ -401,7 +537,7 @@ class ComicReadingPageLogic extends StateController {
     currentScale = 1.0;
     showFloatingButtonValue = 0;
     index = 1;
-    urls.clear();
+    resetContent();
     isLoading = true;
     tools = false;
     showSettings = false;

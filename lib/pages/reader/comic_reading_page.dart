@@ -487,12 +487,12 @@ class ComicReadingPage extends StatelessWidget {
   }
 
   void loadInfo(ComicReadingPageLogic logic) async {
-    logic.urls = [];
+    logic.resetContent();
     var res = await readingData.loadEp(logic.order);
     if (res.error) {
       logic.errorMessage = res.errorMessage;
     } else {
-      logic.urls = res.data;
+      logic.setContent(logic.order, res.data);
     }
     logic.isLoading = false;
     logic.update();
@@ -593,8 +593,7 @@ class ComicReadingPage extends StatelessWidget {
       return;
     }
 
-    var file = await _getFileFromStream(
-        readingData.loadImage(logic.order, index, logic.urls[index]));
+    var file = await _getFileFromStream(logic.loadImageAt(index));
 
     shareImage(file);
   }
@@ -609,8 +608,7 @@ class ComicReadingPage extends StatelessWidget {
       return null;
     }
 
-    var file = await _getFileFromStream(
-        readingData.loadImage(logic.order, index, logic.urls[index]));
+    var file = await _getFileFromStream(logic.loadImageAt(index));
 
     return persistentCurrentImage(file);
   }
@@ -625,8 +623,7 @@ class ComicReadingPage extends StatelessWidget {
       return;
     }
 
-    var file = await _getFileFromStream(
-        readingData.loadImage(logic.order, index, logic.urls[index]));
+    var file = await _getFileFromStream(logic.loadImageAt(index));
 
     saveImage(file);
   }

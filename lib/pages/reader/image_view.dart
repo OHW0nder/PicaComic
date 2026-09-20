@@ -184,6 +184,10 @@ extension ImageExt on ComicReadingPage {
           } else {
             logic.index = i;
             logic.update();
+            // 接近本话末尾时自动续接下一话
+            if (i >= logic.urls.length - 1) {
+              logic.appendNextEp();
+            }
           }
         },
       );
@@ -287,6 +291,10 @@ extension ImageExt on ComicReadingPage {
                 ? (i * 2 - 2).clamp(1, logic.urls.length)
                 : i * 2 - 1;
             logic.update();
+            // 接近本话末尾时自动续接下一话
+            if (i >= calcItemCount() - 3) {
+              logic.appendNextEp();
+            }
           }
         },
       );
@@ -300,7 +308,7 @@ extension ImageExt on ComicReadingPage {
       logic.photoViewControllers[0] ??= PhotoViewController();
       body = PhotoView.customChild(
           backgroundDecoration: decoration,
-          key: Key(logic.order.toString()),
+          key: Key(logic.readingMethod.index.toString()),
           minScale: 1.0,
           maxScale: 2.5,
           strictScale: true,
@@ -369,6 +377,13 @@ extension ImageExt on ComicReadingPage {
             // update floating button
             var length = logic.data.eps?.length ?? 1;
             if (!logic.scrollController.hasClients) return false;
+            // 连续滚动模式: 接近底部时自动续接下一话
+            if (logic.readingMethod == ReadingMethod.topToBottomContinuously &&
+                logic.scrollController.position.maxScrollExtent -
+                        logic.scrollController.position.pixels <=
+                    logic.scrollController.position.viewportDimension * 2) {
+              logic.appendNextEp();
+            }
             if (logic.scrollController.position.pixels -
                         logic.scrollController.position.minScrollExtent <=
                     0 &&
@@ -394,7 +409,9 @@ extension ImageExt on ComicReadingPage {
   ImageProvider createImageProvider(
       ReadingType type, ComicReadingPageLogic logic, int index, String target) {
 
-    return logic.data.createImageProvider(logic.order, index, logic.urls[index]);
+    // 多话续接时, 全局页码需映射到对应章节及章节内页码
+    return logic.data.createImageProvider(
+        logic.epOrderAt(index), logic.localPageAt(index), logic.urls[index]);
   }
 
   /// check current location of [PageView], update location when it is out of range.
