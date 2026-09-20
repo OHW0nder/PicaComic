@@ -42,6 +42,9 @@ final class HistoryType {
   final int value;
 
   String get name {
+    if (value == 10) {
+      return "local";
+    }
     if (value >= 0 && value <= 5) {
       return ["picacg", "ehentai", "jm", "hitomi", "htmanga", "nhentai"][value];
     } else {

@@ -37,7 +37,12 @@ Future<void> init() async {
     // 翻译表尽早加载且独立于后续步骤：
     // 之前放在链条末尾的 Future.wait 里，任何一步失败都会导致
     // translations 未初始化，UI 首次访问 .tl 即崩溃
-    await AppTranslation.init();
+    // 单独 try/catch：翻译表加载失败只降级为显示原文，不阻断后续初始化
+    try {
+      await AppTranslation.init();
+    } catch (e, s) {
+      LogManager.addLog(LogLevel.error, "Init", "Translation init failed!\n$e$s");
+    }
     io.File? logFile = io.File("${App.dataPath}/log.txt");
     if(App.isAndroid) {
       var externalDirectory = await getExternalStorageDirectory();
