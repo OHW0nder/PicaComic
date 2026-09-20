@@ -86,7 +86,7 @@ class Appdata {
     "0", //54 阅读后移动本地收藏(否/尾/首)
     "1", //55 长按缩放
     "https://18comic.vip", //56 jm domain
-    "1", //57 show page info in reader
+    "1", //57 show page info in reader(废弃, 阅读器不再显示页数指示器)
     "0", //58 hosts
     "012345678", //59 explore page(废弃)
     "0", //60 action when local favorite is tapped
@@ -390,12 +390,6 @@ class _Settings {
 
   set reduceBrightnessInDarkMode(bool value) {
     appdata.settings[18] = value ? "1" : "0";
-  }
-
-  bool get showPageInfoInReader => appdata.settings[57] == "1";
-
-  set showPageInfoInReader(bool value) {
-    appdata.settings[57] = value ? "1" : "0";
   }
 
   bool get showButtonsInReader => appdata.settings[4] == "1";

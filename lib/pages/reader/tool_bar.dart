@@ -13,9 +13,10 @@ extension ToolBar on ComicReadingPage {
       child: StateBuilder<ComicReadingPageLogic>(
         id: "ToolBar",
         builder: (logic) {
-          var text = "E${logic.order} : P${logic.index}";
+          // 续接多话后 index 是串接后的全局页码, 这里显示的是当前话内的页码
+          var text = "E${logic.order} : P${logic.localPageAt(logic.index - 1) + 1}";
           if (logic.order == 0) {
-            text = "P${logic.index}";
+            text = "P${logic.localPageAt(logic.index - 1) + 1}";
           }
 
           Widget child = SizedBox(
@@ -432,50 +433,4 @@ extension ToolBar on ComicReadingPage {
     );
   }
 
-  ///显示当前的章节和页面位置
-  Widget buildPageInfoText(
-      ComicReadingPageLogic comicReadingPageLogic, BuildContext context) {
-    return Positioned(
-      bottom: 13,
-      left: 25,
-      child: StateBuilder<ComicReadingPageLogic>(
-        id: "ToolBar",
-        builder: (logic) {
-          var epName = readingData.eps?.values
-                  .elementAtOrNull(comicReadingPageLogic.order - 1) ??
-              "E1";
-          if (epName.length > 8) {
-            epName = "${epName.substring(0, 8)}...";
-          }
-          var text = readingData.hasEp
-              ? "$epName : ${comicReadingPageLogic.index}/${comicReadingPageLogic.urls.length}"
-              : "${comicReadingPageLogic.index}/${comicReadingPageLogic.urls.length}";
-          return Stack(
-            children: [
-              Text(
-                text,
-                style: TextStyle(
-                  fontSize: 14,
-                  foreground: Paint()
-                    ..style = PaintingStyle.stroke
-                    ..strokeWidth = 1.4
-                    ..color = (useDarkBackground ||
-                            Theme.of(context).brightness == Brightness.dark)
-                        ? Colors.black
-                        : Colors.white,
-                ),
-              ),
-              Text(
-                text,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: useDarkBackground ? Colors.white : null,
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
 }

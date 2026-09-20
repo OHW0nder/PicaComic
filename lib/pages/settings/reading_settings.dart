@@ -143,11 +143,6 @@ class _ReadingSettingsState extends State<ReadingSettings> {
           icon: const Icon(Icons.zoom_in),
         ),
         SwitchSetting(
-          title: "显示页面信息".tl,
-          settingsIndex: 57,
-          icon: const Icon(Icons.insert_drive_file_outlined),
-        ),
-        SwitchSetting(
           title: "使用深色背景".tl,
           settingsIndex: 81,
           icon: const Icon(Icons.dark_mode),

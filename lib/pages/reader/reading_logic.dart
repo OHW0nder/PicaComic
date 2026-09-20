@@ -183,14 +183,15 @@ class ComicReadingPageLogic extends StateController {
   ///内容版本号, 异步续接完成时用于判断内容是否已被章节切换重置
   int _contentGeneration = 0;
 
-  bool _appendingNextEp = false;
+  ///正在进行的续接请求, 并发调用复用同一个 Future
+  Future<bool>? _pendingAppend;
 
   ///重置内容为空(章节切换/重新加载时调用)
   void resetContent() {
     _contentGeneration++;
     _epStarts.clear();
     _lastAppendedOrder = 0;
-    _appendingNextEp = false;
+    _pendingAppend = null;
     urls = [];
   }
 
@@ -200,8 +201,10 @@ class ComicReadingPageLogic extends StateController {
     _epStarts.clear();
     _epStarts[epOrder] = 0;
     _lastAppendedOrder = epOrder;
-    _appendingNextEp = false;
-    urls = epUrls;
+    _pendingAppend = null;
+    // 复制成可增长列表: 本地 ZIP、已下载漫画的 loadEp 返回的是
+    // List.filled 生成的定长列表, 直接使用会导致续接时 addAll 失败
+    urls = List.of(epUrls);
   }
 
   ///全局页码(0基)对应的章节序号
@@ -244,25 +247,60 @@ class ComicReadingPageLogic extends StateController {
       _lastAppendedOrder < (data.eps?.length ?? 0);
 
   ///自动续接下一话: 将下一话内容拼接到当前内容末尾, 成功返回true
-  Future<bool> appendNextEp() async {
-    if (!hasEpToAppend || _appendingNextEp) {
-      return false;
+  ///
+  ///已有续接请求在途时复用该请求: 自动翻页需要等待续接结果,
+  ///不能把"正在续接"和"没有下一话"一样当作失败, 否则会停在本话末尾.
+  Future<bool> appendNextEp() {
+    final pending = _pendingAppend;
+    if (pending != null) {
+      return pending;
     }
-    _appendingNextEp = true;
+    if (!hasEpToAppend) {
+      log("跳过续接: hasEp=${data.hasEp} 当前话=$_lastAppendedOrder "
+          "总话数=${data.eps?.length} 已加载页数=${urls.length}", "续接");
+      return Future.value(false);
+    }
+    late final Future<bool> future;
+    future = _appendNextEp().whenComplete(() {
+      // 结束(包括失败)后清空在途标记, 使后续调用可以重新尝试;
+      // 若期间已被新的续接请求或章节切换替换, 则不动它
+      if (identical(_pendingAppend, future)) {
+        _pendingAppend = null;
+      }
+    });
+    _pendingAppend = future;
+    return future;
+  }
+
+  Future<bool> _appendNextEp() async {
     int nextOrder = _lastAppendedOrder + 1;
     int generation = _contentGeneration;
-    var res = await data.loadEp(nextOrder);
+    log("开始续接第 $nextOrder 话(总话数=${data.eps?.length}, 已加载页数=${urls.length})",
+        "续接");
+    Res<List<String>> res;
+    try {
+      res = await data.loadEp(nextOrder);
+    } catch (e, s) {
+      // 加载抛异常不能让自动翻页静默中断
+      log("第 $nextOrder 话加载抛异常: $e\n$s", "续接", LogLevel.error);
+      return false;
+    }
     if (generation != _contentGeneration) {
       // 期间发生了章节切换, 丢弃结果
+      log("丢弃第 $nextOrder 话结果: 期间发生了章节切换", "续接");
       return false;
     }
-    _appendingNextEp = false;
     if (res.error) {
+      log("第 $nextOrder 话加载失败: ${res.errorMessageWithoutNull}", "续接",
+          LogLevel.error);
       return false;
     }
-    _epStarts[nextOrder] = urls.length;
-    _lastAppendedOrder = nextOrder;
+    // 先并入内容再更新记录: 并入失败时不留下"下一话已拼接"的错位状态
+    final start = urls.length;
     urls.addAll(res.data);
+    _epStarts[nextOrder] = start;
+    _lastAppendedOrder = nextOrder;
+    log("第 $nextOrder 话已拼接 ${res.data.length} 页, 共 ${urls.length} 页", "续接");
     update();
     return true;
   }
@@ -439,7 +477,6 @@ class ComicReadingPageLogic extends StateController {
 
       outer:
       while (runningAutoPageTurning) {
-        double maxScroll = scrollController.position.maxScrollExtent;
         while (runningAutoPageTurning) {
           // 用户刚拖拽完？等待弹跳完全结束
           if (_userWasDragging) {
@@ -449,6 +486,9 @@ class ComicReadingPageLogic extends StateController {
             await Future.delayed(const Duration(milliseconds: 50));
             continue;
           }
+          // 每次重新读取终点: 续接进来的下一话会让列表变长, 终点随之改变,
+          // 用旧终点判断会把"还没读完"当成"已到末尾"而停下
+          double maxScroll = scrollController.position.maxScrollExtent;
           double remaining = maxScroll - scrollController.position.pixels;
           if (remaining <= 1) {
             break;
@@ -461,13 +501,8 @@ class ComicReadingPageLogic extends StateController {
                   Duration(milliseconds: (totalSec * 1000).round()),
               curve: Curves.linear,
             );
-            // animateTo 正常返回，但需要确认是否真的到了终点
-            // （被手势中断时也会正常返回，但位置没到终点）
-            if (scrollController.position.pixels < maxScroll - 1) {
-              await Future.delayed(const Duration(milliseconds: 50));
-              continue;
-            }
-            break; // 真正到了终点
+            // animateTo 正常返回不代表到了终点（被手势中断也会正常返回），
+            // 由下一轮循环重新读取位置判断
           } catch (_) {
             // 被中断（点击或拖拽），短暂等待后循环重新开始
             await Future.delayed(const Duration(milliseconds: 50));
@@ -477,11 +512,15 @@ class ComicReadingPageLogic extends StateController {
           return;
         }
         // 到达本话末尾, 尝试自动续接下一话, 续接后继续滚动
-        if (!await appendNextEp()) {
-          break outer;
+        if (await appendNextEp()) {
+          // 等待列表完成布局, 使 maxScrollExtent 反映新增内容
+          await Future.delayed(const Duration(milliseconds: 200));
+          continue;
         }
-        // 等待列表完成布局, 使 maxScrollExtent 反映新增内容
-        await Future.delayed(const Duration(milliseconds: 200));
+        log("自动翻页停止: 已到内容末尾且无下一话可续接(位置="
+            "${scrollController.position.pixels.toStringAsFixed(0)}/"
+            "${scrollController.position.maxScrollExtent.toStringAsFixed(0)})", "续接");
+        break outer;
       }
       runningAutoPageTurning = false;
       update();
